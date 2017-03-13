@@ -3,14 +3,19 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <cmath>
 #include <unordered_map>
+#include <unordered_set>
 
 using namespace std;
+
+int nextIdx = 0;
 
 class Tile {
 public:
     int row;
     int col;
+    int idx;
 
     Tile * up;
     Tile * down;
@@ -22,13 +27,18 @@ public:
         this->row = row;
         this->col = col;
         this->up = this->right = this->down = this->left = (Tile *)0;
+        this->idx = nextIdx++;
     }
 
-    bool operator==(const Tile & tile){
+    double get_distance (const Tile & t) {
+        return sqrt((double)((this->row-t.row)*(this->row-t.row) + (this->col-t.col)*(this->col-t.col)));
+    }
+
+    bool operator==(const Tile & tile) const {
         return this->row == tile.row && this->col == tile.col;
     }
 
-    bool operator!=(const Tile & tile){
+    bool operator!=(const Tile & tile) const {
         return !(*this == tile);
     }
 
@@ -319,6 +329,18 @@ void BottomRightTile::set_identity_neighbors (vector<vector<bool> > & canva) {
     }
 }
 
+int height = 0;
+int width = 0;
+
+namespace std {
+    template <>
+    struct hash<Tile> {
+        size_t operator()( const Tile & t ) const {
+            return t.row * height + t.col;
+        }
+    };
+}
+
 
 
 
@@ -326,9 +348,42 @@ void BottomRightTile::set_identity_neighbors (vector<vector<bool> > & canva) {
 class Area {
 public:
     vector<Tile> tiles;
-    vector<Tile> exterior;
+    vector<Tile> borders;
+    int id;
 
-    Area () {}
+    Area() {
+        this->id = -1;
+    };
+    Area (int id) {
+        this->id = id;
+    }
+
+    bool operator == (const Area & a) const {
+        return this->id == a.id;
+    }
+};
+
+class Distance {
+public:
+    Tile t1;
+    Tile t2;
+    vector<Area> areas;
+    double dist;
+
+    Distance (){
+        double dist = 10000000;
+    }
+
+    Distance (Tile t1, Tile t2) {
+        this->t1 = t1;
+        this->t2 = t2;
+
+        this->dist = t1.get_distance (t2);
+    }
+
+    bool operator < (const Distance & d) const {
+        return this->dist < d.dist;
+    }
 };
 
 
@@ -340,6 +395,253 @@ public:
     CrossStitch () {
         canvas = vector<vector<vector<bool> > >(26, vector<vector<bool> > (100, vector<bool> (100, false)));
     }
+
+
+    vector<Area> computeAreas (vector<vector<bool> > canva) {
+        vector<Area> areas;
+        vector<vector<bool> > computed (canva.size(), vector<bool>(canva[0].size(), false));
+
+        int height = this->S;
+        int width = this->S;
+        int nextId = 0;
+
+        // All over the canva
+        for (int row=0 ; row<height ; row++) {
+            for (int col=0 ; col<width ; col++) {
+                if (canva[row][col]) {
+                    if (!computed[row][col]) {
+                        Area area (nextId++);
+
+                        // BFS
+                        unordered_set<Tile> to_compute;
+                        to_compute.insert(Tile(row, col));
+                        computed[row][col] = true;
+
+                        while (to_compute.size() > 0) {
+                            Tile t = *(to_compute.begin());
+                            to_compute.erase(to_compute.begin());
+                            int nb_neighbors = 0;
+
+                            // Up
+                            if (t.row > 0 && canva[t.row-1][t.col]) {
+                                nb_neighbors++;
+                                if (!computed[t.row-1][t.col]) {
+                                    to_compute.insert(Tile(t.row-1,t.col));
+                                    computed[t.row-1][t.col] = true;
+                                }
+                            }
+                            // Down
+                            if (t.row+1 < height && canva[t.row+1][t.col]) {
+                                nb_neighbors++;
+                                if (!computed[t.row+1][t.col]) {
+                                    to_compute.insert(Tile(t.row+1,t.col));
+                                    computed[t.row+1][t.col] = true;
+                                }
+                            }
+                            // Left
+                            if (t.col > 0 && canva[t.row][t.col-1]) {
+                                nb_neighbors++;
+                                if (!computed[t.row][t.col-1]) {
+                                    to_compute.insert(Tile(t.row,t.col-1));
+                                    computed[t.row][t.col-1] = true;
+                                }
+                            }
+                            // Right
+                            if (t.col+1 < width && canva[t.row][t.col+1]) {
+                                nb_neighbors++;
+                                if (!computed[t.row][t.col+1]) {
+                                    to_compute.insert(Tile(t.row,t.col+1));
+                                    computed[t.row][t.col+1] = true;
+                                }
+                            }
+
+                            area.tiles.push_back(t);
+                            if (nb_neighbors < 4)
+                                area.borders.push_back(t);
+                        }
+
+                        areas.push_back(area);
+                    }
+                } else {
+                    computed[row][col] = true;
+                }
+            }
+        }
+
+        return areas;
+    }
+
+    vector<vector<Distance> > get_distances (vector<Area> areas) {
+        vector<vector<Distance> > distances (areas.size(), vector<Distance> (areas.size()));
+
+        for (int a1Idx=0 ; a1Idx<areas.size() ; a1Idx++) {
+            Area & a1 = areas[a1Idx];
+            for (int a2Idx=a1Idx+1 ; a2Idx<areas.size() ; a2Idx++) {
+                Area & a2 = areas[a2Idx];
+
+                Distance min_dist;
+                int val_min = 1000000;
+                for (Tile & t1 : a1.borders) {
+                    for (Tile & t2 : a2.borders) {
+                        if (t1.get_distance(t2) < val_min) {
+                            min_dist = Distance(t1, t2);
+                            val_min = min_dist.dist;
+                        }
+                    }
+                }
+
+                distances[a1Idx][a2Idx] = min_dist;
+                distances[a2Idx][a1Idx] = Distance(min_dist.t2, min_dist.t1);
+            }
+        }
+
+        return distances;
+    }
+
+
+    // vector<vector<Distance> > get_complex_distances (vector<Area> areas, vector<vector<Distance> > distances) {
+    //     vector<vector<Distance> > distances (areas.size(), vector<Distance> (areas.size()));
+
+    //     // TODO !!
+
+    //     return distances;
+    // }
+
+
+    bool _hamilton_used (vector<bool> used) {
+        int false_vals;
+        for (bool val : used)
+            if (!val)
+                false_vals++;
+
+        return false_vals == 1;
+    }
+
+    vector<Area> _hamilton_mins (vector<bool> used, vector<Area> areas, vector<vector<Distance> > distances) {
+        vector<Area> mins (areas.size());
+
+        for (Area & area : areas) {
+            double min = 1000000;
+            Area & min_area = areas[0];
+
+            for (Area & next : areas) {
+                if (used[next.id] || next.id == area.id)
+                    continue;
+
+                Distance & dist = distances[area.id][next.id];
+                if (dist.dist < min) {
+                    min = dist.dist;
+                    min_area = next;
+                }
+            }
+
+            mins[area.id] = min_area;
+        }
+
+        return mins;
+    }
+
+    vector<Area> hamiltonian_path (vector<Area> areas, vector<vector<Distance> > distances) {
+        vector<Area> path;
+        vector<Area> previous;
+        vector<Area> nexts;
+
+        for (Area & a : areas) {
+            nexts.push_back(a);
+            previous.push_back(a);
+        }
+
+        // Shuffle and sort the distances
+        vector<bool> used (areas.size(), false);
+
+        while (!_hamilton_used(used)) {
+            // Compute mins
+            vector<Area> mins = _hamilton_mins (used, areas, distances);
+
+            double max = -1;
+            Area max_area = areas[0];
+            // Select the area with the maximum minimum
+            for (int a_idx=0 ; a_idx<mins.size() ; a_idx++) {
+                if (used[a_idx])
+                    continue;
+
+                Area prev = areas[a_idx];
+                Area & next = mins[prev.id];
+
+                double dist = distances[prev.id][next.id].dist;
+                if (dist > max) {
+                    max = dist;
+                    max_area = prev;
+                }
+            }
+
+            // Add the area in the path
+            used[max_area.id] = true;
+            Area & next = mins[max_area.id];
+            nexts[max_area.id] = next;
+            previous[next.id] = max_area;
+        }
+
+
+        // Reconstruct the path
+        Area current = areas[0];
+        for (int idx=0 ; idx<previous.size() ; idx++) {
+            if (idx == previous[idx].id) {
+                current = previous[idx];
+                break;
+            }
+        }
+
+        path.push_back(current);
+        while (current.id != nexts[current.id].id) {
+            current = nexts[current.id];
+            path.push_back(current);
+        }
+
+        return path;
+    }
+
+
+    // vector<Area> hamiltonian_path (vector<Area> areas, vector<vector<Distance> > distances) {
+    //     vector<Area> path;
+
+    //     // Index the areas
+    //     unordered_map<Tile, Area> area_index;
+    //     for (Area a : areas)
+    //         for (Tile t : a.borders)
+    //             area_index[t] = a;
+
+    //     // Shuffle and sort the distances
+    //     vector<bool> used (areas.size(), false);
+    //     Area & current = *(areas.begin());
+    //     path.push_back(current);
+    //     used[current.id] = true;
+
+
+    //     while (path.size() < areas.size()) {
+    //         vector<Distance> current_distances = distances[current.id];
+    //         current_distances.erase(current_distances.begin() + current.id);
+
+    //         random_shuffle(current_distances.begin(), current_distances.end());
+    //         sort(current_distances.begin(), current_distances.end());
+
+            
+    //         // Select the smallest dist
+    //         for (Distance & d : current_distances) {
+    //             Area a = area_index[d.t2];
+
+    //             if (a.id != -1 && !used[a.id]) {
+    //                 current = a;
+    //                 break;
+    //             }
+    //         }
+
+    //         used[current.id] = true;
+    //         path.push_back(current);
+    //     }
+
+    //     return path;
+    // }
 
 
 
@@ -446,7 +748,7 @@ public:
 
 
     /* Get the best string path for a contiguous area */
-    vector<int> computeArea (vector<vector<bool> > & canva, Tile & start, Tile & end) {
+    vector<int> computeAreaWire (vector<vector<bool> > & canva, Tile & start, Tile & end) {
         // Descente de gradient
         unordered_map<int, int> gradient = this->get_gradient(canva, start);
 
@@ -465,37 +767,35 @@ public:
     /* Solve the problem for 1 color */
     vector<int> solve (int color) {
         vector<int> sol;
-        if (color != 0)
-            return sol;
 
-        // TODO : Parcours en largeur pour trouver les zones
-        Area test;
-        test.tiles.push_back(Tile(2, 1));
-        test.tiles.push_back(Tile(2, 2));
-        test.tiles.push_back(Tile(2, 3));
-        test.tiles.push_back(Tile(1, 2));
-        test.tiles.push_back(Tile(1, 3));
-        test.tiles.push_back(Tile(3, 2));
-        test.tiles.push_back(Tile(3, 3));
-        test.tiles.push_back(Tile(0, 2));
-        test.tiles.push_back(Tile(0, 1));
+        // BFS to find contiguous areas
+        vector<Area> areas = computeAreas(canvas[color]);
 
-        vector<Area> areas;
-        areas.push_back(test);
+        // Compute basic distances
+        vector<vector<Distance> > distances = get_distances(areas);
 
+        // Hamilton path between conexa areas
+        vector<Area> path = hamiltonian_path (areas, distances);
 
-        // TODO : Trouver les points et distances entre zones
+        // // Pavage dans chacune des zones
+        // for (Area & area : path) {
+        //     vector<int> path = this->computeAreaWire (this->canvas[color], *(area.tiles.begin()), *(area.tiles.end()-1));
+        //     sol.insert(sol.end(), path.begin(), path.end());
+        // }
 
-        // TODO : Algo d'optimisation de distances inter zones
+        Tile & previous = *(areas[0].tiles.begin());
+        for (int idx=0 ; idx<path.size()-1 ; idx++) {
+            Area & first = path[idx];
+            Area & second = path[idx+1];
+            Distance & link = distances[first.id][second.id];
 
-        cout << "--- Pavage ---" << endl;
-        // Pavage dans chacune des zones
-        for (Area & area : areas) {
-            vector<int> path = this->computeArea (this->canvas[color], *(area.tiles.begin()), *(area.tiles.end()-1));
-            sol.insert(sol.end(), path.begin(), path.end());
+            vector<int> wirePath = this->computeAreaWire (this->canvas[color], previous, link.t1);
+            sol.insert(sol.end(), wirePath.begin(), wirePath.end());
+            previous = link.t2;
         }
 
-        cout << "--- /Pavage ---" << endl;
+        vector<int> wirePath = this->computeAreaWire (this->canvas[color], previous, *(path[path.size()-1].tiles.begin()));
+        sol.insert(sol.end(), wirePath.begin(), wirePath.end());
 
         return sol;
     }
@@ -513,6 +813,8 @@ public:
 
     vector<string> embroider(vector<string> pattern) {
         this->S = pattern.size();
+        height = this->S;
+        width = this->S;
         int colMax=2;
 
         for (int r = 0; r < S; ++r)
