@@ -358,6 +358,16 @@ public:
         this->id = id;
     }
 
+    Area & operator=(const Area & a) {
+        if (this != &a) {
+            this->tiles = a.tiles;
+            this->borders = a.borders;
+            this->id = a.id;
+        }
+
+        return *this;
+    }
+
     bool operator == (const Area & a) const {
         return this->id == a.id;
     }
@@ -546,7 +556,7 @@ public:
         vector<Area> previous;
         vector<Area> nexts;
 
-        for (Area & a : areas) {
+        for (Area a : areas) {
             nexts.push_back(a);
             previous.push_back(a);
         }
@@ -566,7 +576,7 @@ public:
                     continue;
 
                 Area prev = areas[a_idx];
-                Area & next = mins[prev.id];
+                Area next = mins[prev.id];
 
                 double dist = distances[prev.id][next.id].dist;
                 if (dist > max) {
@@ -577,7 +587,7 @@ public:
 
             // Add the area in the path
             used[max_area.id] = true;
-            Area & next = mins[max_area.id];
+            Area next = mins[max_area.id];
             nexts[max_area.id] = next;
             previous[next.id] = max_area;
         }
