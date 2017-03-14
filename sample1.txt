@@ -1,6 +1,6 @@
 5
-bbbbb
-ba.ab
-b.a.b
-ba.ab
-bbbbb
+....b
+.a...
+a.a..
+.....
+.....

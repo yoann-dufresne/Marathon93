@@ -519,7 +519,7 @@ public:
 
 
     bool _hamilton_used (vector<bool> used) {
-        int false_vals;
+        int false_vals = 0;
         for (bool val : used)
             if (!val)
                 false_vals++;
@@ -527,15 +527,26 @@ public:
         return false_vals == 1;
     }
 
-    vector<Area> _hamilton_mins (vector<bool> used, vector<Area> areas, vector<vector<Distance> > distances) {
+    vector<Area> _hamilton_mins (vector<bool> used, vector<Area> areas, vector<vector<Distance> > distances, vector<Area> previous) {
         vector<Area> mins (areas.size());
 
         for (Area & area : areas) {
+            if (used[area.id]) {
+                mins[area.id] = 0;
+                continue;
+            }
+
+            // Avoid cyclic dependances
+            Area & prev = area;
+            while (prev.id != previous[prev.id].id)
+                prev = previous[prev.id];
+
             double min = 1000000;
-            Area & min_area = areas[0];
+            Area min_area = areas[0];
 
             for (Area & next : areas) {
-                if (used[next.id] || next.id == area.id)
+                // No loop over the same element
+                if (next.id == area.id || prev.id == next.id)
                     continue;
 
                 Distance & dist = distances[area.id][next.id];
@@ -556,6 +567,8 @@ public:
         vector<Area> previous;
         vector<Area> nexts;
 
+        cout << "Hamilton" << endl;
+
         for (Area a : areas) {
             nexts.push_back(a);
             previous.push_back(a);
@@ -566,14 +579,25 @@ public:
 
         while (!_hamilton_used(used)) {
             // Compute mins
-            vector<Area> mins = _hamilton_mins (used, areas, distances);
+            // cout << "Min" << endl;
+            vector<Area> mins = _hamilton_mins (used, areas, distances, previous);
+            // cout << "/Min" << endl;
+
+            for (int idx=0 ; idx<nexts.size() ; idx++)
+                cout << idx << "->" << nexts[idx].id << "\t";
+            cout << endl;
+
+            for (int idx=0 ; idx<mins.size() ; idx++)
+                cout << idx << ":" << mins[idx].id << ":" << (mins[idx].id == -1 ? -1 : distances[idx][mins[idx].id].dist) << "\t";
+            cout << endl << endl;
 
             double max = -1;
-            Area max_area = areas[0];
+            Area max_area;
             // Select the area with the maximum minimum
             for (int a_idx=0 ; a_idx<mins.size() ; a_idx++) {
-                if (used[a_idx])
+                if (used[a_idx]) {
                     continue;
+                }
 
                 Area prev = areas[a_idx];
                 Area next = mins[prev.id];
@@ -582,18 +606,39 @@ public:
                 if (dist > max) {
                     max = dist;
                     max_area = prev;
+                    // cout << "Dist: " << prev.id << " " << max << endl;
                 }
             }
 
+            // cout << "Max idx: " << max_area.id << endl;
+
             // Add the area in the path
+            // cout << "ok" << endl;
+            cout << "Max " << max_area.id << endl;
             used[max_area.id] = true;
+            // cout << "ok" << endl;
             Area next = mins[max_area.id];
+            // cout << "ok" << endl;
+            // cout << previous.size() << " " << next.id << endl;
             nexts[max_area.id] = next;
+            // cout << "ok" << endl;
+            // cout << previous.size() << " " << next.id << endl;
             previous[next.id] = max_area;
+            // cout << "ok" << endl;
         }
+
+        // cout << "ok" << endl;
 
 
         // Reconstruct the path
+        // for (int idx=0 ; idx<previous.size() ; idx++)
+        //     cout << previous[idx].id << ":" << idx << " ";
+        // cout << endl;
+
+        // for (int idx=0 ; idx<nexts.size() ; idx++)
+        //     cout << nexts[idx].id << ":" << idx << " ";
+        // cout << endl;
+
         Area current = areas[0];
         for (int idx=0 ; idx<previous.size() ; idx++) {
             if (idx == previous[idx].id) {
@@ -607,6 +652,8 @@ public:
             current = nexts[current.id];
             path.push_back(current);
         }
+
+        cout << "/Hamilton" << endl;
 
         return path;
     }
@@ -786,14 +833,11 @@ public:
 
         // Hamilton path between conexa areas
         vector<Area> path = hamiltonian_path (areas, distances);
+        cout << path.size() << " areas in path" << endl;
 
-        // // Pavage dans chacune des zones
-        // for (Area & area : path) {
-        //     vector<int> path = this->computeAreaWire (this->canvas[color], *(area.tiles.begin()), *(area.tiles.end()-1));
-        //     sol.insert(sol.end(), path.begin(), path.end());
-        // }
+        cout << endl;
 
-        Tile & previous = *(areas[0].tiles.begin());
+        Tile & previous = *(path[0].tiles.begin());
         for (int idx=0 ; idx<path.size()-1 ; idx++) {
             Area & first = path[idx];
             Area & second = path[idx+1];
