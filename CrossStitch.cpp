@@ -34,6 +34,16 @@ public:
         return sqrt((double)((this->row-t.row)*(this->row-t.row) + (this->col-t.col)*(this->col-t.col)));
     }
 
+    Tile & operator=(const Tile & t) {
+        if (this != &t) {
+            this->row = t.row;
+            this->col = t.col;
+            this->idx = t.idx;
+        }
+
+        return *this;
+    }
+
     bool operator==(const Tile & tile) const {
         return this->row == tile.row && this->col == tile.col;
     }
